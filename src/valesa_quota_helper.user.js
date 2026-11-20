@@ -162,6 +162,9 @@
   function showBubble(html) {
     textEl.innerHTML = html;
     fill.style.width = Math.max(0, (1 - used / total) * 100) + '%';
+    // 强制重触发动画：先移除再添加，保证连点也有反馈
+    bubble.classList.remove('show');
+    void bubble.offsetWidth; // 强制回流，重启动画
     bubble.classList.add('show');
     clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(() => bubble.classList.remove('show'), 5000);
@@ -212,6 +215,7 @@
   pet.style.transform = `translate(${posX}px, ${posY}px)`;
 
   let dragStartX = 0, dragStartY = 0, lastX = 0, lastY = 0, dragT0 = 0;
+  let downX = 0, downY = 0; // 按下初始位置，用于判定"是否移动过"
   function onDown(e) {
     if (e.target.closest('#valesa-controls')) return;
     const p = e.touches ? e.touches[0] : e;
@@ -219,6 +223,7 @@
     dragT0 = Date.now();
     dragStartX = p.clientX - posX; dragStartY = p.clientY - posY;
     lastX = p.clientX; lastY = p.clientY;
+    downX = p.clientX; downY = p.clientY;
     avatar.classList.add('dragging');
   }
   function onMove(e) {
@@ -230,13 +235,15 @@
     lastX = p.clientX; lastY = p.clientY;
     pet.style.transform = `translate(${posX}px, ${posY}px)`;
   }
-  function onUp() {
+  function onUp(e) {
     if (!isDragging) return;
     isDragging = false;
     avatar.classList.remove('dragging');
+    const p = e.changedTouches ? e.changedTouches[0] : e;
     const dur = Date.now() - dragT0;
-    if (dur < 200 && Math.abs(velX) < 5 && Math.abs(velY) < 5) {
-      // 点击 → 必弹剩余次数（核心功能）
+    const movedDist = Math.hypot(p.clientX - downX, p.clientY - downY);
+    if (dur < 300 && movedDist < 6) {
+      // 点击（未移动）→ 必弹剩余次数（核心功能）
       velX = 0; velY = 0;
       showQuota();
       playPop();
