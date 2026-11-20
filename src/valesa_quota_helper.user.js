@@ -1,11 +1,15 @@
 // ==UserScript==
 // @name         DeepSeek 额度小助手 · Valesa
 // @namespace    valesa-quota-helper
-// @version      2.1.0
+// @version      2.1.1
 // @description  每次对话后提醒你还剩多少次 DeepSeek 使用机会；萌宠带物理引擎、台词气泡、自定义头像与大小
 // @author       jiana2006
+// @license      MIT
 // @icon         data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🐱</text></svg>
 // @match        https://chat.deepseek.com/*
+// @downloadURL  https://raw.githubusercontent.com/jiana2006/deepseek-quota-helper/main/valesa_quota_helper.user.js
+// @updateURL    https://raw.githubusercontent.com/jiana2006/deepseek-quota-helper/main/valesa_quota_helper.user.js
+// @supportURL   https://github.com/jiana2006/deepseek-quota-helper/issues
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue
