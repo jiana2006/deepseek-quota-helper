@@ -278,18 +278,33 @@
     recall.classList.add('show');
   }
 
-  /* ================== 拖图片换头像 ================== */
-  avatar.addEventListener('dragover', e => { e.preventDefault(); avatar.style.outline = '3px dashed #5b6fd6'; });
-  avatar.addEventListener('dragleave', () => { avatar.style.outline = ''; });
-  avatar.addEventListener('drop', e => {
-    e.preventDefault();
+  /* ================== 拖图片换头像（全页面可放置） ================== */
+  // DeepSeek 页面会拦截拖放，这里在 document 级接管：拖图片到页面任何位置都能换头像
+  let dragDepth = 0;
+  document.addEventListener('dragenter', e => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
+      dragDepth++;
+      avatar.style.outline = '3px dashed #5b6fd6';
+      avatar.style.outlineOffset = '3px';
+    }
+  });
+  document.addEventListener('dragleave', () => {
+    if (--dragDepth <= 0) { dragDepth = 0; avatar.style.outline = ''; }
+  });
+  document.addEventListener('dragover', e => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault();
+  });
+  document.addEventListener('drop', e => {
+    dragDepth = 0;
     avatar.style.outline = '';
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (!f || !/^image\//.test(f.type)) { showBubble('只支持拖入图片文件哦～'); return; }
+    if (!f || !/^image\//.test(f.type)) return; // 非图片：交给页面默认行为
+    e.preventDefault();
+    e.stopPropagation();
     const r = new FileReader();
-    r.onload = () => { avatarUrl = r.result; GM_setValue('valesa_avatar', avatarUrl); applyAvatar(); showBubble('头像换好啦，很好看！✨'); };
+    r.onload = () => { avatarUrl = r.result; GM_setValue('valesa_avatar', avatarUrl); applyAvatar(); showBubble('头像换好啦，很好看！✨'); playPop(); };
     r.readAsDataURL(f);
-  });
+  }, true);
 
   /* ================== 滚轮缩放 ================== */
   avatar.addEventListener('wheel', e => {
