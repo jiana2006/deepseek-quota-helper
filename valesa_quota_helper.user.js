@@ -47,7 +47,7 @@
       display: flex; align-items: flex-end; gap: 8px; font-family: system-ui, sans-serif;
       user-select: none; }
     #valesa-widget.dragging { transition: none; }
-    #valesa-widget.hidden { transform: translateY(140%); }
+    #valesa-widget.hidden { display: none; }
     #valesa-avatar { width: 64px; height: 64px; border-radius: 50%; border: 3px solid #9db4ff;
       box-shadow: 0 4px 14px rgba(90,110,220,.35); cursor: grab; object-fit: cover;
       transition: transform .2s; background: #fff; touch-action: none; }
@@ -55,6 +55,17 @@
     #valesa-avatar:hover { transform: scale(1.08) rotate(-4deg); }
     #valesa-avatar.emoji { display: flex; align-items: center; justify-content: center;
       font-size: 38px; background: linear-gradient(135deg,#eef2ff,#e2e9ff); }
+    #valesa-tools { position: absolute; top: -14px; left: 50%; transform: translate(-50%, -100%);
+      display: none; gap: 6px; background: #fff; border: 1.5px solid #b9c6ff; border-radius: 999px;
+      padding: 5px 8px; box-shadow: 0 3px 10px rgba(90,110,220,.25); }
+    #valesa-widget:hover #valesa-tools { display: flex; }
+    #valesa-tools span { cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 6px; }
+    #valesa-tools span:hover { background: #eef2ff; transform: scale(1.15); }
+    #valesa-restore { position: fixed; right: 8px; bottom: 8px; z-index: 99999; width: 26px; height: 26px;
+      border-radius: 50%; background: rgba(91,111,214,.25); border: 1.5px solid #9db4ff; cursor: pointer;
+      display: none; align-items: center; justify-content: center; font-size: 13px; color: #5b6fd6;
+      backdrop-filter: blur(2px); }
+    #valesa-restore.show { display: flex; }
     #valesa-bubble { background: #fff; border: 1.5px solid #b9c6ff; border-radius: 12px 12px 3px 12px;
       padding: 8px 12px; max-width: 230px; font-size: 13px; color: #333; line-height: 1.5;
       box-shadow: 0 3px 10px rgba(90,110,220,.18); opacity: 0; transform: translateY(6px);
@@ -70,11 +81,24 @@
 
   const widget = document.createElement('div');
   widget.id = 'valesa-widget';
+  widget.style.position = 'fixed';
   widget.innerHTML = `
     <div id="valesa-bubble"><span id="valesa-text"></span><div id="valesa-bar"><div id="valesa-bar-fill"></div></div></div>
-    <div id="valesa-avatar" title="点我开关气泡 / 按住拖动" draggable="false"></div>
+    <div style="position:relative">
+      <div id="valesa-avatar" title="点我开关气泡 / 按住拖动" draggable="false"></div>
+      <div id="valesa-tools">
+        <span id="valesa-tool-hide" title="隐藏 Valesa（点边缘小圆点唤回）">✕</span>
+        <span id="valesa-tool-avatar" title="设置头像">🎨</span>
+      </div>
+    </div>
   `;
   document.body.appendChild(widget);
+
+  const restoreBtn = document.createElement('div');
+  restoreBtn.id = 'valesa-restore';
+  restoreBtn.textContent = '🐱';
+  restoreBtn.title = '唤回 Valesa';
+  document.body.appendChild(restoreBtn);
 
   const bubble = document.getElementById('valesa-bubble');
   const textEl = document.getElementById('valesa-text');
@@ -120,6 +144,24 @@
   avatar.addEventListener('click', () => {
     if (bubble.classList.contains('show')) bubble.classList.remove('show');
     else render();
+  });
+
+  /* ================== 隐藏 / 唤回 ================== */
+  document.getElementById('valesa-tool-hide').addEventListener('click', e => {
+    e.stopPropagation();
+    widget.classList.add('hidden');
+    restoreBtn.classList.add('show');
+    bubble.classList.remove('show');
+  });
+  document.getElementById('valesa-tool-avatar').addEventListener('click', e => {
+    e.stopPropagation();
+    const v = prompt('粘贴头像图片的 URL 或 base64 data: 开头字符串\n留空则恢复默认 emoji 头像', avatarUrl);
+    if (v !== null) { avatarUrl = v.trim(); GM_setValue('valesa_avatar', avatarUrl); applyAvatar(); }
+  });
+  restoreBtn.addEventListener('click', () => {
+    widget.classList.remove('hidden');
+    restoreBtn.classList.remove('show');
+    render();
   });
 
   /* ================== 拖动 ================== */
