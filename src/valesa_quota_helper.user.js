@@ -167,7 +167,10 @@
     void bubble.offsetWidth; // 强制回流，重启动画
     bubble.classList.add('show');
     clearTimeout(bubbleTimer);
-    bubbleTimer = setTimeout(() => bubble.classList.remove('show'), 5000);
+    bubbleTimer = setTimeout(() => {
+      bubble.classList.remove('show');
+      lastClickWasQuota = false; // 气泡消失后重置：下次点击先弹剩余次数
+    }, 3000);
   }
   function showQuota() {
     const left = Math.max(0, total - used);
@@ -216,6 +219,7 @@
 
   let dragStartX = 0, dragStartY = 0, lastX = 0, lastY = 0, dragT0 = 0;
   let downX = 0, downY = 0; // 按下初始位置，用于判定"是否移动过"
+  let lastClickWasQuota = false; // 上次点击是否弹的额度（实现交替：额度 ↔ 台词）
   function onDown(e) {
     if (e.target.closest('#valesa-controls')) return;
     const p = e.touches ? e.touches[0] : e;
@@ -243,9 +247,15 @@
     const dur = Date.now() - dragT0;
     const movedDist = Math.hypot(p.clientX - downX, p.clientY - downY);
     if (dur < 300 && movedDist < 6) {
-      // 点击（未移动）→ 必弹剩余次数（核心功能）
+      // 点击 → 交替弹：剩余次数 ↔ 用户自定义台词
       velX = 0; velY = 0;
-      showQuota();
+      if (!lastClickWasQuota) {
+        showQuota();
+        lastClickWasQuota = true;
+      } else {
+        showBubble(nextTip());
+        lastClickWasQuota = false;
+      }
       playPop();
       avatar.style.transform = 'scale(0.85)';
       setTimeout(() => avatar.style.transform = 'scale(1)', 150);
