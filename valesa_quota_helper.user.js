@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DeepSeek 额度小助手 · Valesa
 // @namespace    valesa-quota-helper
-// @version      1.2.0
-// @description  每次对话后提醒你还剩多少次 DeepSeek 使用机会，由 Valesa 萌宠播报
+// @version      2.0.0
+// @description  每次对话后提醒你还剩多少次 DeepSeek 使用机会；萌宠带物理引擎、台词气泡、自定义头像与大小
 // @author       jiana2006
 // @icon         data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🐱</text></svg>
 // @match        https://chat.deepseek.com/*
@@ -18,101 +18,115 @@
   /* ================== 配置 ================== */
   const DEFAULT_TOTAL = 50;          // 默认总额度（次）
   const DEFAULT_EMOJI = '🐱';        // 默认头像（emoji，无版权风险）
+
   let avatarUrl = GM_getValue('valesa_avatar', '');  // 用户自定义头像（图片 URL 或 base64 data:）
   let avatarSize = GM_getValue('valesa_size', 64);   // 头像大小（px）
-
   let total = GM_getValue('valesa_total', DEFAULT_TOTAL);
   let used  = GM_getValue('valesa_used', 0);
-  const reset = () => { used = 0; GM_setValue('valesa_used', 0); render(); speak('额度已重置啦，今天也要加油哦～'); };
+
+  const DEFAULT_TIPS = ['喵喵喵~', '今天也要加油聊天哦！', '点我干嘛？(｡･ω･｡)', '还剩几次机会，心里有数嘛？'];
+  let tips = JSON.parse(GM_getValue('valesa_tips', JSON.stringify(DEFAULT_TIPS)));
+  let tipIndex = parseInt(GM_getValue('valesa_tipIndex', '0'), 10) || 0;
+
+  const reset = () => { used = 0; GM_setValue('valesa_used', 0); showBubble('额度已重置啦，今天也要加油哦～'); };
 
   GM_registerMenuCommand('设置总次数', () => {
     const v = prompt('请输入总对话次数', total);
-    if (v !== null && +v > 0) { total = +v; GM_setValue('valesa_total', total); render(); }
+    if (v !== null && +v > 0) { total = +v; GM_setValue('valesa_total', total); showQuota(); }
   });
   GM_registerMenuCommand('重置计数', reset);
   GM_registerMenuCommand('手动校正已用次数', () => {
     const v = prompt('已使用次数', used);
-    if (v !== null && +v >= 0) { used = +v; GM_setValue('valesa_used', used); render(); }
-  });
-  GM_registerMenuCommand('设置头像（图片URL或base64）', () => {
-    const v = prompt('粘贴头像图片的 URL 或 base64 data: 开头字符串\n留空则恢复默认 emoji 头像', avatarUrl);
-    if (v !== null) { avatarUrl = v.trim(); GM_setValue('valesa_avatar', avatarUrl); applyAvatar(); }
+    if (v !== null && +v >= 0) { used = +v; GM_setValue('valesa_used', used); showQuota(); }
   });
   GM_registerMenuCommand('恢复默认头像', () => {
     avatarUrl = ''; GM_setValue('valesa_avatar', ''); applyAvatar();
   });
 
-  /* ================== Valesa 悬浮窗 ================== */
+  /* ================== 样式 ================== */
   const css = `
-    #valesa-widget { position: fixed; right: 16px; bottom: 16px; z-index: 99999;
-      display: flex; align-items: flex-end; gap: 8px; font-family: system-ui, sans-serif;
-      user-select: none; }
-    #valesa-widget.dragging { transition: none; }
-    #valesa-widget.hidden { display: none; }
+    #valesa-pet { position: fixed; left: 0; top: 0; z-index: 99999; user-select: none;
+      will-change: transform; }
     #valesa-avatar { border-radius: 50%; border: 3px solid #9db4ff;
       box-shadow: 0 4px 14px rgba(90,110,220,.35); cursor: grab; object-fit: cover;
-      transition: transform .2s; background: #fff; touch-action: none; }
+      background: #fff; display: flex; align-items: center; justify-content: center;
+      background-size: cover; background-position: center; touch-action: none; }
     #valesa-avatar.dragging { cursor: grabbing; }
-    #valesa-avatar:hover { transform: scale(1.08) rotate(-4deg); }
-    #valesa-avatar.emoji { display: flex; align-items: center; justify-content: center;
+    #valesa-avatar.emoji { background-image: none;
       background: linear-gradient(135deg,#eef2ff,#e2e9ff); }
-    #valesa-tools { position: absolute; top: -14px; left: 50%; transform: translate(-50%, -100%);
-      display: none; gap: 6px; background: #fff; border: 1.5px solid #b9c6ff; border-radius: 999px;
-      padding: 5px 8px; box-shadow: 0 3px 10px rgba(90,110,220,.25); }
-    #valesa-widget:hover #valesa-tools { display: flex; }
-    #valesa-tools span { cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 6px; }
-    #valesa-tools span:hover { background: #eef2ff; transform: scale(1.15); }
-    #valesa-restore { position: fixed; right: 8px; bottom: 8px; z-index: 99999; width: 26px; height: 26px;
-      border-radius: 50%; background: rgba(91,111,214,.25); border: 1.5px solid #9db4ff; cursor: pointer;
-      display: none; align-items: center; justify-content: center; font-size: 13px; color: #5b6fd6;
-      backdrop-filter: blur(2px); }
-    #valesa-restore.show { display: flex; }
-    #valesa-bubble { background: #fff; border: 1.5px solid #b9c6ff; border-radius: 12px 12px 3px 12px;
-      padding: 8px 12px; max-width: 230px; font-size: 13px; color: #333; line-height: 1.5;
-      box-shadow: 0 3px 10px rgba(90,110,220,.18); opacity: 0; transform: translateY(6px);
-      transition: all .25s; pointer-events: none; }
-    #valesa-bubble.show { opacity: 1; transform: translateY(0); }
+    #valesa-bubble { position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, -8px);
+      background: #fff; border: 1.5px solid #b9c6ff; border-radius: 12px 12px 3px 12px;
+      padding: 8px 12px; max-width: 240px; font-size: 13px; color: #333; line-height: 1.5;
+      box-shadow: 0 3px 10px rgba(90,110,220,.18); opacity: 0; pointer-events: none;
+      transition: opacity .25s, transform .25s; white-space: nowrap; }
+    #valesa-bubble.show { opacity: 1; transform: translate(-50%, -12px); }
     #valesa-bubble b { color: #5b6fd6; font-size: 15px; }
     #valesa-bar { height: 6px; background: #e6ebff; border-radius: 3px; margin-top: 6px; overflow: hidden; }
     #valesa-bar > div { height: 100%; background: linear-gradient(90deg,#7f9bff,#5b6fd6); border-radius: 3px; transition: width .4s; }
+    #valesa-controls { position: absolute; top: -8px; right: -8px; display: flex; gap: 4px;
+      opacity: 0; transition: opacity .2s; }
+    #valesa-pet:hover #valesa-controls { opacity: 1; }
+    #valesa-controls button { width: 22px; height: 22px; border-radius: 50%; border: none;
+      background: #fff; color: #5b6fd6; font-size: 12px; cursor: pointer; line-height: 1;
+      box-shadow: 0 2px 6px rgba(90,110,220,.35); display: flex; align-items: center; justify-content: center; }
+    #valesa-controls button:hover { background: #eef2ff; transform: scale(1.15); }
+    #valesa-recall { position: fixed; right: 8px; bottom: 8px; z-index: 99999; width: 30px; height: 30px;
+      border-radius: 50%; background: rgba(91,111,214,.25); border: 1.5px solid #9db4ff; cursor: pointer;
+      display: none; align-items: center; justify-content: center; font-size: 16px; color: #5b6fd6;
+      backdrop-filter: blur(2px); }
+    #valesa-recall.show { display: flex; }
+    #valesa-modal { position: fixed; inset: 0; z-index: 100000; background: rgba(0,0,0,.4);
+      display: none; align-items: center; justify-content: center; }
+    #valesa-modal.show { display: flex; }
+    #valesa-modal .box { background: #fff; border-radius: 14px; padding: 20px; width: 320px;
+      font-family: system-ui, sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,.2); }
+    #valesa-modal h3 { margin: 0 0 14px; color: #5b6fd6; font-size: 16px; }
+    #valesa-modal label { font-size: 13px; color: #666; display: block; margin-bottom: 6px; }
+    #valesa-modal input[type=range] { width: 100%; }
+    #valesa-tips-list { max-height: 160px; overflow-y: auto; margin: 12px 0; }
+    .tip-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .tip-item input { flex: 1; border: 1px solid #ddd; border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+    .tip-item .del { cursor: pointer; color: #e05252; border: none; background: none; font-size: 16px; }
+    #valesa-modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+    #valesa-modal .actions button { padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; }
+    #valesa-add-tip { color: #5b6fd6; background: none; border: none; cursor: pointer; font-size: 13px; padding: 4px 0; }
+    #valesa-save { background: #5b6fd6; color: #fff; }
+    #valesa-cancel { background: #f0f0f0; color: #666; }
   `;
   const style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
 
-  const widget = document.createElement('div');
-  widget.id = 'valesa-widget';
-  widget.style.position = 'fixed';
-  widget.innerHTML = `
+  /* ================== DOM 结构 ================== */
+  const pet = document.createElement('div');
+  pet.id = 'valesa-pet';
+  pet.innerHTML = `
     <div id="valesa-bubble"><span id="valesa-text"></span><div id="valesa-bar"><div id="valesa-bar-fill"></div></div></div>
-    <div style="position:relative">
-      <div id="valesa-avatar" title="点我开关气泡 / 按住拖动" draggable="false"></div>
-      <div id="valesa-tools">
-        <span id="valesa-tool-hide" title="隐藏 Valesa（点边缘小圆点唤回）">✕</span>
-        <span id="valesa-tool-avatar" title="设置头像">🎨</span>
-      </div>
+    <div id="valesa-avatar" draggable="false"></div>
+    <div id="valesa-controls">
+      <button id="valesa-hide" title="隐藏">✕</button>
+      <button id="valesa-settings" title="设置">⚙️</button>
+      <button id="valesa-change" title="换角色">🎨</button>
     </div>
   `;
-  document.body.appendChild(widget);
+  document.body.appendChild(pet);
 
-  const restoreBtn = document.createElement('div');
-  restoreBtn.id = 'valesa-restore';
-  restoreBtn.textContent = '🐱';
-  restoreBtn.title = '唤回 Valesa';
-  document.body.appendChild(restoreBtn);
+  const recall = document.createElement('div');
+  recall.id = 'valesa-recall';
+  recall.textContent = '🐱';
+  recall.title = '召唤 Valesa';
+  document.body.appendChild(recall);
 
   const bubble = document.getElementById('valesa-bubble');
   const textEl = document.getElementById('valesa-text');
-  const fill   = document.getElementById('valesa-bar-fill');
+  const fill = document.getElementById('valesa-bar-fill');
   const avatar = document.getElementById('valesa-avatar');
 
-  // 应用头像：优先自定义图片，否则显示 emoji
+  /* ================== 头像 / 大小 ================== */
   function applyAvatar() {
     if (avatarUrl) {
       avatar.classList.remove('emoji');
       avatar.style.backgroundImage = `url("${avatarUrl.replace(/"/g, '\\"')}")`;
-      avatar.style.backgroundSize = 'cover';
-      avatar.style.backgroundPosition = 'center';
       avatar.textContent = '';
     } else {
       avatar.classList.add('emoji');
@@ -120,7 +134,6 @@
       avatar.textContent = DEFAULT_EMOJI;
     }
   }
-  // 应用头像大小
   function applySize() {
     avatar.style.width = avatarSize + 'px';
     avatar.style.height = avatarSize + 'px';
@@ -129,129 +142,239 @@
   applyAvatar();
   applySize();
 
-  let hideTimer = null;
-  function speak(msg) {
-    textEl.innerHTML = msg;
-    fill.style.width = Math.max(0, (1 - used / total) * 100) + '%';
-    bubble.classList.add('show');
-    widget.classList.remove('hidden');
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => bubble.classList.remove('show'), 6000);
+  /* ================== 音效 ================== */
+  let audioCtx = null;
+  function playPop() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'sine'; o.frequency.value = 600;
+      g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      o.start(); o.stop(audioCtx.currentTime + 0.12);
+    } catch (e) {}
   }
 
-  function render() {
+  /* ================== 气泡 ================== */
+  let bubbleTimer = null;
+  function showBubble(html) {
+    textEl.innerHTML = html;
+    fill.style.width = Math.max(0, (1 - used / total) * 100) + '%';
+    bubble.classList.add('show');
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => bubble.classList.remove('show'), 5000);
+  }
+  function showQuota() {
     const left = Math.max(0, total - used);
     let tone = '';
     if (left <= 0) tone = '<br>呜……额度用完了，快去充值/重置吧 🥺';
     else if (left <= 5) tone = '<br>快用完啦，省着点用哦！';
     else if (left <= 15) tone = '<br>额度过半偏多，注意节制～';
     else tone = '<br>今天状态不错，继续聊吧！';
-    speak(`主人，已用 <b>${used}</b> / ${total} 次<br>还剩 <b>${left}</b> 次对话机会${tone}`);
+    showBubble(`主人，已用 <b>${used}</b> / ${total} 次<br>还剩 <b>${left}</b> 次对话机会${tone}`);
+  }
+  function nextTip() {
+    if (!tips.length) return '点我干嘛？';
+    const t = tips[tipIndex];
+    tipIndex = (tipIndex + 1) % tips.length;
+    GM_setValue('valesa_tipIndex', tipIndex);
+    return t;
   }
 
-  avatar.addEventListener('click', () => {
-    if (bubble.classList.contains('show')) bubble.classList.remove('show');
-    else render();
-  });
+  /* ================== 物理引擎（惯性 + 碰撞反弹） ================== */
+  let posX = parseInt(GM_getValue('valesa_posX', '20'), 10) || 20;
+  let posY = parseInt(GM_getValue('valesa_posY', String(window.innerHeight - avatarSize - 20)), 10);
+  let velX = 0, velY = 0;
+  let isDragging = false, animating = false;
+  const friction = 0.96, bounce = 0.72;
 
-  /* ================== 隐藏 / 唤回 ================== */
-  document.getElementById('valesa-tool-hide').addEventListener('click', e => {
+  function updatePhysics() {
+    if (isDragging) return;
+    velX *= friction; velY *= friction;
+    posX += velX; posY += velY;
+    const w = avatarSize, h = avatarSize;
+    const winW = window.innerWidth, winH = window.innerHeight;
+    if (posX < 0) { posX = 0; velX *= -bounce; playPop(); }
+    if (posX > winW - w) { posX = winW - w; velX *= -bounce; playPop(); }
+    if (posY < 0) { posY = 0; velY *= -bounce; playPop(); }
+    if (posY > winH - h) { posY = winH - h; velY *= -bounce; playPop(); }
+    pet.style.transform = `translate(${posX}px, ${posY}px)`;
+    if (Math.abs(velX) > 0.1 || Math.abs(velY) > 0.1) {
+      requestAnimationFrame(updatePhysics);
+    } else {
+      animating = false;
+      GM_setValue('valesa_posX', Math.round(posX));
+      GM_setValue('valesa_posY', Math.round(posY));
+    }
+  }
+  pet.style.transform = `translate(${posX}px, ${posY}px)`;
+
+  let dragStartX = 0, dragStartY = 0, lastX = 0, lastY = 0, dragT0 = 0;
+  function onDown(e) {
+    if (e.target.closest('#valesa-controls')) return;
+    const p = e.touches ? e.touches[0] : e;
+    isDragging = true; animating = false;
+    dragT0 = Date.now();
+    dragStartX = p.clientX - posX; dragStartY = p.clientY - posY;
+    lastX = p.clientX; lastY = p.clientY;
+    avatar.classList.add('dragging');
+  }
+  function onMove(e) {
+    if (!isDragging) return;
+    const p = e.touches ? e.touches[0] : e;
+    e.preventDefault();
+    posX = p.clientX - dragStartX; posY = p.clientY - dragStartY;
+    velX = p.clientX - lastX; velY = p.clientY - lastY;
+    lastX = p.clientX; lastY = p.clientY;
+    pet.style.transform = `translate(${posX}px, ${posY}px)`;
+  }
+  function onUp() {
+    if (!isDragging) return;
+    isDragging = false;
+    avatar.classList.remove('dragging');
+    const dur = Date.now() - dragT0;
+    if (dur < 200 && Math.abs(velX) < 5 && Math.abs(velY) < 5) {
+      // 算点击 → 弹台词
+      velX = 0; velY = 0;
+      showBubble(nextTip());
+      playPop();
+      avatar.style.transform = 'scale(0.85)';
+      setTimeout(() => avatar.style.transform = 'scale(1)', 150);
+    } else {
+      // 拖拽抛出 → 物理反弹
+      animating = true;
+      requestAnimationFrame(updatePhysics);
+    }
+  }
+  avatar.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  avatar.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onUp);
+
+  /* ================== 控制按钮 ================== */
+  document.getElementById('valesa-hide').addEventListener('click', e => {
     e.stopPropagation();
-    widget.classList.add('hidden');
-    restoreBtn.classList.add('show');
-    bubble.classList.remove('show');
+    pet.style.display = 'none';
+    GM_setValue('valesa_hidden', '1');
+    recall.classList.add('show');
   });
-  document.getElementById('valesa-tool-avatar').addEventListener('click', e => {
+  document.getElementById('valesa-change').addEventListener('click', e => {
     e.stopPropagation();
-    const v = prompt('粘贴头像图片的 URL 或 base64 data: 开头字符串\n留空则恢复默认 emoji 头像', avatarUrl);
+    const v = prompt('粘贴头像图片 URL 或 base64（data:image/...）：\n也可直接拖图片文件到 Valesa 身上换头像\n留空则恢复默认 emoji', avatarUrl);
     if (v !== null) { avatarUrl = v.trim(); GM_setValue('valesa_avatar', avatarUrl); applyAvatar(); }
   });
-  restoreBtn.addEventListener('click', () => {
-    widget.classList.remove('hidden');
-    restoreBtn.classList.remove('show');
-    render();
+  recall.addEventListener('click', () => {
+    pet.style.display = '';
+    recall.classList.remove('show');
+    GM_setValue('valesa_hidden', '0');
+    showQuota();
   });
+  if (GM_getValue('valesa_hidden', '0') === '1') {
+    pet.style.display = 'none';
+    recall.classList.add('show');
+  }
 
-  /* ================== 拖拽图片换头像 ================== */
-  // 把本地图片文件直接拖到 Valesa 头像上即可换头像
+  /* ================== 拖图片换头像 ================== */
   avatar.addEventListener('dragover', e => { e.preventDefault(); avatar.style.outline = '3px dashed #5b6fd6'; });
   avatar.addEventListener('dragleave', () => { avatar.style.outline = ''; });
   avatar.addEventListener('drop', e => {
     e.preventDefault();
     avatar.style.outline = '';
-    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (!file || !/^image\//.test(file.type)) { speak('只支持拖入图片文件哦～'); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      avatarUrl = reader.result; // data:image/...;base64,...
-      GM_setValue('valesa_avatar', avatarUrl);
-      applyAvatar();
-      speak('头像换好啦，很好看！✨');
-    };
-    reader.readAsDataURL(file);
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f || !/^image\//.test(f.type)) { showBubble('只支持拖入图片文件哦～'); return; }
+    const r = new FileReader();
+    r.onload = () => { avatarUrl = r.result; GM_setValue('valesa_avatar', avatarUrl); applyAvatar(); showBubble('头像换好啦，很好看！✨'); };
+    r.readAsDataURL(f);
   });
 
-  /* ================== 滚轮缩放头像 ================== */
+  /* ================== 滚轮缩放 ================== */
   avatar.addEventListener('wheel', e => {
     e.preventDefault();
     avatarSize += e.deltaY < 0 ? 4 : -4;
-    avatarSize = Math.min(Math.max(24, avatarSize), 160); // 限制 24~160px
+    avatarSize = Math.min(Math.max(24, avatarSize), 160);
     GM_setValue('valesa_size', avatarSize);
     applySize();
   }, { passive: false });
 
-  /* ================== 拖动 ================== */
-  let dragging = false, startX = 0, startY = 0, origL = 0, origT = 0, moved = false;
-  function onDragStart(e) {
-    const p = e.touches ? e.touches[0] : e;
-    dragging = true; moved = false;
-    startX = p.clientX; startY = p.clientY;
-    const r = widget.getBoundingClientRect();
-    origL = r.left; origT = r.top;
-    widget.classList.add('dragging');
-    avatar.classList.add('dragging');
-  }
-  function onDragMove(e) {
-    if (!dragging) return;
-    const p = e.touches ? e.touches[0] : e;
-    const dx = p.clientX - startX, dy = p.clientY - startY;
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
-    if (!moved) return;
-    e.preventDefault();
-    // 转为 left/top 定位
-    widget.style.right = 'auto';
-    widget.style.bottom = 'auto';
-    const w = widget.offsetWidth, h = widget.offsetHeight;
-    const nl = Math.min(Math.max(0, origL + dx), window.innerWidth - w);
-    const nt = Math.min(Math.max(0, origT + dy), window.innerHeight - h);
-    widget.style.left = nl + 'px';
-    widget.style.top = nt + 'px';
-  }
-  function onDragEnd() {
-    if (!dragging) return;
-    dragging = false;
-    widget.classList.remove('dragging');
-    avatar.classList.remove('dragging');
-    if (!moved) return; // 未移动视为点击，交给 click
-  }
-  avatar.addEventListener('mousedown', onDragStart);
-  document.addEventListener('mousemove', onDragMove);
-  document.addEventListener('mouseup', onDragEnd);
-  avatar.addEventListener('touchstart', onDragStart, { passive: false });
-  document.addEventListener('touchmove', onDragMove, { passive: false });
-  document.addEventListener('touchend', onDragEnd);
+  /* ================== 设置弹窗 ================== */
+  const modal = document.createElement('div');
+  modal.id = 'valesa-modal';
+  modal.innerHTML = `
+    <div class="box">
+      <h3>⚙️ Valesa 设置</h3>
+      <label>大小调整（px）：<span id="valesa-size-val">${avatarSize}</span></label>
+      <input type="range" id="valesa-size-range" min="24" max="160" step="4" value="${avatarSize}">
+      <div style="font-size:12px;color:#999;margin-top:6px">台词列表（点击时轮流弹出）：</div>
+      <div id="valesa-tips-list"></div>
+      <button id="valesa-add-tip">+ 添加台词</button>
+      <div class="actions">
+        <button id="valesa-cancel">取消</button>
+        <button id="valesa-save">保存</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 
-  /* ================== 监听发送 ================== */
-  // 拦截回车 / 发送按钮点击，判定为一次新对话
+  function renderTipsList() {
+    const list = modal.querySelector('#valesa-tips-list');
+    list.innerHTML = '';
+    tips.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'tip-item';
+      item.innerHTML = `<input type="text" value="${t.replace(/"/g, '&quot;')}"><button class="del">×</button>`;
+      item.querySelector('.del').onclick = () => { item.remove(); };
+      list.appendChild(item);
+    });
+  }
+  document.getElementById('valesa-settings').addEventListener('click', e => {
+    e.stopPropagation();
+    modal.querySelector('#valesa-size-range').value = avatarSize;
+    modal.querySelector('#valesa-size-val').textContent = avatarSize;
+    renderTipsList();
+    modal.classList.add('show');
+  });
+  modal.querySelector('#valesa-size-range').addEventListener('input', e => {
+    modal.querySelector('#valesa-size-val').textContent = e.target.value;
+  });
+  modal.querySelector('#valesa-add-tip').addEventListener('click', () => {
+    const list = modal.querySelector('#valesa-tips-list');
+    const item = document.createElement('div');
+    item.className = 'tip-item';
+    item.innerHTML = `<input type="text" placeholder="编辑内容..."><button class="del">×</button>`;
+    item.querySelector('.del').onclick = () => item.remove();
+    list.appendChild(item);
+    list.scrollTop = list.scrollHeight;
+  });
+  modal.querySelector('#valesa-cancel').onclick = () => modal.classList.remove('show');
+  modal.onclick = e => { if (e.target === modal) modal.classList.remove('show'); };
+  modal.querySelector('#valesa-save').onclick = () => {
+    const inputs = modal.querySelectorAll('.tip-item input');
+    const arr = Array.from(inputs).map(i => i.value.trim()).filter(v => v);
+    tips = arr.length ? arr : DEFAULT_TIPS;
+    tipIndex = 0;
+    GM_setValue('valesa_tips', JSON.stringify(tips));
+    GM_setValue('valesa_tipIndex', 0);
+    avatarSize = +modal.querySelector('#valesa-size-range').value;
+    GM_setValue('valesa_size', avatarSize);
+    applySize();
+    modal.classList.remove('show');
+    showBubble('设置保存好啦～');
+  };
+
+  /* ================== 监听发送（额度计数） ================== */
   let lastSend = 0;
   function markSend() {
     const now = Date.now();
-    if (now - lastSend < 1500) return; // 防抖
+    if (now - lastSend < 1500) return;
     lastSend = now;
     setTimeout(() => {
       used += 1;
       GM_setValue('valesa_used', used);
-      render();
+      showQuota();
     }, 800);
   }
   document.addEventListener('keydown', e => {
@@ -261,7 +384,6 @@
     }
   }, true);
   document.addEventListener('click', e => {
-    // DeepSeek 发送按钮（按 aria-label / SVG 按钮兜底匹配）
     const btn = e.target.closest('div[role="button"], button');
     if (btn && /send|发送/i.test((btn.getAttribute('aria-label') || '') + (btn.textContent || ''))) markSend();
   }, true);
