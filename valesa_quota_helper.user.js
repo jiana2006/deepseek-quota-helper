@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DeepSeek 额度小助手 · Valesa
 // @namespace    valesa-quota-helper
-// @version      2.0.0
+// @version      2.1.0
 // @description  每次对话后提醒你还剩多少次 DeepSeek 使用机会；萌宠带物理引擎、台词气泡、自定义头像与大小
 // @author       jiana2006
 // @icon         data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🐱</text></svg>
@@ -236,9 +236,9 @@
     avatar.classList.remove('dragging');
     const dur = Date.now() - dragT0;
     if (dur < 200 && Math.abs(velX) < 5 && Math.abs(velY) < 5) {
-      // 算点击 → 弹台词
+      // 点击 → 必弹剩余次数（核心功能）
       velX = 0; velY = 0;
-      showBubble(nextTip());
+      showQuota();
       playPop();
       avatar.style.transform = 'scale(0.85)';
       setTimeout(() => avatar.style.transform = 'scale(1)', 150);
@@ -380,7 +380,7 @@
     showBubble('设置保存好啦～');
   };
 
-  /* ================== 监听发送（额度计数） ================== */
+  /* ================== 监听发送（额度计数 + 生成结束提醒） ================== */
   let lastSend = 0;
   function markSend() {
     const now = Date.now();
@@ -389,9 +389,40 @@
     setTimeout(() => {
       used += 1;
       GM_setValue('valesa_used', used);
-      showQuota();
+      showQuota(); // 发送后立即提醒一次
+      watchGeneration();
     }, 800);
   }
+
+  // 监测 AI 是否在生成中：发送后开始轮询，生成结束（状态从true变false）时再次提醒剩余次数
+  let wasGenerating = false;
+  let watchTimer = null;
+  function isGenerating() {
+    // 线索1：输入框被禁用
+    const ta = document.querySelector('textarea');
+    if (ta && ta.disabled) return true;
+    // 线索2：存在"停止生成"按钮（多种常见命名兜底）
+    if (document.querySelector('[class*="stop" i][class*="button" i], [class*="stopButton"], [aria-label*="停止"], [aria-label*="Stop" i], [aria-label*="stop" i]')) return true;
+    return false;
+  }
+  function watchGeneration() {
+    if (watchTimer) return;
+    watchTimer = setInterval(() => {
+      const gen = isGenerating();
+      if (gen) {
+        wasGenerating = true;
+      } else if (wasGenerating) {
+        // 生成刚结束
+        clearInterval(watchTimer);
+        watchTimer = null;
+        wasGenerating = false;
+        setTimeout(showQuota, 500);
+      }
+    }, 600);
+    // 最长观察 10 分钟，防止状态判断失效导致无限轮询
+    setTimeout(() => { if (watchTimer) { clearInterval(watchTimer); watchTimer = null; wasGenerating = false; } }, 600000);
+  }
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       const box = e.target.closest('textarea, [contenteditable="true"]');
