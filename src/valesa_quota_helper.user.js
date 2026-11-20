@@ -4,6 +4,7 @@
 // @version      1.1.0
 // @description  每次对话后提醒你还剩多少次 DeepSeek 使用机会，由 Valesa 萌宠播报
 // @author       jiana2006
+// @icon         data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🐱</text></svg>
 // @match        https://chat.deepseek.com/*
 // @run-at       document-idle
 // @grant        GM_getValue
