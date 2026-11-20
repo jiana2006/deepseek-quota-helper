@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DeepSeek 额度小助手 · Valesa
 // @namespace    valesa-quota-helper
-// @version      1.1.0
+// @version      1.2.0
 // @description  每次对话后提醒你还剩多少次 DeepSeek 使用机会，由 Valesa 萌宠播报
 // @author       jiana2006
 // @icon         data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🐱</text></svg>
@@ -19,6 +19,7 @@
   const DEFAULT_TOTAL = 50;          // 默认总额度（次）
   const DEFAULT_EMOJI = '🐱';        // 默认头像（emoji，无版权风险）
   let avatarUrl = GM_getValue('valesa_avatar', '');  // 用户自定义头像（图片 URL 或 base64 data:）
+  let avatarSize = GM_getValue('valesa_size', 64);   // 头像大小（px）
 
   let total = GM_getValue('valesa_total', DEFAULT_TOTAL);
   let used  = GM_getValue('valesa_used', 0);
@@ -48,13 +49,13 @@
       user-select: none; }
     #valesa-widget.dragging { transition: none; }
     #valesa-widget.hidden { display: none; }
-    #valesa-avatar { width: 64px; height: 64px; border-radius: 50%; border: 3px solid #9db4ff;
+    #valesa-avatar { border-radius: 50%; border: 3px solid #9db4ff;
       box-shadow: 0 4px 14px rgba(90,110,220,.35); cursor: grab; object-fit: cover;
       transition: transform .2s; background: #fff; touch-action: none; }
     #valesa-avatar.dragging { cursor: grabbing; }
     #valesa-avatar:hover { transform: scale(1.08) rotate(-4deg); }
     #valesa-avatar.emoji { display: flex; align-items: center; justify-content: center;
-      font-size: 38px; background: linear-gradient(135deg,#eef2ff,#e2e9ff); }
+      background: linear-gradient(135deg,#eef2ff,#e2e9ff); }
     #valesa-tools { position: absolute; top: -14px; left: 50%; transform: translate(-50%, -100%);
       display: none; gap: 6px; background: #fff; border: 1.5px solid #b9c6ff; border-radius: 999px;
       padding: 5px 8px; box-shadow: 0 3px 10px rgba(90,110,220,.25); }
@@ -119,7 +120,14 @@
       avatar.textContent = DEFAULT_EMOJI;
     }
   }
+  // 应用头像大小
+  function applySize() {
+    avatar.style.width = avatarSize + 'px';
+    avatar.style.height = avatarSize + 'px';
+    avatar.style.fontSize = Math.round(avatarSize * 0.6) + 'px';
+  }
   applyAvatar();
+  applySize();
 
   let hideTimer = null;
   function speak(msg) {
@@ -163,6 +171,34 @@
     restoreBtn.classList.remove('show');
     render();
   });
+
+  /* ================== 拖拽图片换头像 ================== */
+  // 把本地图片文件直接拖到 Valesa 头像上即可换头像
+  avatar.addEventListener('dragover', e => { e.preventDefault(); avatar.style.outline = '3px dashed #5b6fd6'; });
+  avatar.addEventListener('dragleave', () => { avatar.style.outline = ''; });
+  avatar.addEventListener('drop', e => {
+    e.preventDefault();
+    avatar.style.outline = '';
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file || !/^image\//.test(file.type)) { speak('只支持拖入图片文件哦～'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      avatarUrl = reader.result; // data:image/...;base64,...
+      GM_setValue('valesa_avatar', avatarUrl);
+      applyAvatar();
+      speak('头像换好啦，很好看！✨');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  /* ================== 滚轮缩放头像 ================== */
+  avatar.addEventListener('wheel', e => {
+    e.preventDefault();
+    avatarSize += e.deltaY < 0 ? 4 : -4;
+    avatarSize = Math.min(Math.max(24, avatarSize), 160); // 限制 24~160px
+    GM_setValue('valesa_size', avatarSize);
+    applySize();
+  }, { passive: false });
 
   /* ================== 拖动 ================== */
   let dragging = false, startX = 0, startY = 0, origL = 0, origT = 0, moved = false;
