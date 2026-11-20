@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         DeepSeek 额度小助手 · Valesa
 // @namespace    valesa-quota-helper
-// @version      1.0.0
+// @version      1.1.0
 // @description  每次对话后提醒你还剩多少次 DeepSeek 使用机会，由 Valesa 萌宠播报
-// @author       Valesa
+// @author       jiana2006
 // @match        https://chat.deepseek.com/*
 // @run-at       document-idle
 // @grant        GM_getValue
@@ -16,8 +16,8 @@
 
   /* ================== 配置 ================== */
   const DEFAULT_TOTAL = 50;          // 默认总额度（次）
-  const AVATAR_B64 = '__AVATAR_B64__'; // 内嵌的 valesa.jpg
-  const AVATAR_URL = 'data:image/jpeg;base64,' + AVATAR_B64;
+  const DEFAULT_EMOJI = '🐱';        // 默认头像（emoji，无版权风险）
+  let avatarUrl = GM_getValue('valesa_avatar', '');  // 用户自定义头像（图片 URL 或 base64 data:）
 
   let total = GM_getValue('valesa_total', DEFAULT_TOTAL);
   let used  = GM_getValue('valesa_used', 0);
@@ -32,6 +32,13 @@
     const v = prompt('已使用次数', used);
     if (v !== null && +v >= 0) { used = +v; GM_setValue('valesa_used', used); render(); }
   });
+  GM_registerMenuCommand('设置头像（图片URL或base64）', () => {
+    const v = prompt('粘贴头像图片的 URL 或 base64 data: 开头字符串\n留空则恢复默认 emoji 头像', avatarUrl);
+    if (v !== null) { avatarUrl = v.trim(); GM_setValue('valesa_avatar', avatarUrl); applyAvatar(); }
+  });
+  GM_registerMenuCommand('恢复默认头像', () => {
+    avatarUrl = ''; GM_setValue('valesa_avatar', ''); applyAvatar();
+  });
 
   /* ================== Valesa 悬浮窗 ================== */
   const css = `
@@ -45,6 +52,8 @@
       transition: transform .2s; background: #fff; touch-action: none; }
     #valesa-avatar.dragging { cursor: grabbing; }
     #valesa-avatar:hover { transform: scale(1.08) rotate(-4deg); }
+    #valesa-avatar.emoji { display: flex; align-items: center; justify-content: center;
+      font-size: 38px; background: linear-gradient(135deg,#eef2ff,#e2e9ff); }
     #valesa-bubble { background: #fff; border: 1.5px solid #b9c6ff; border-radius: 12px 12px 3px 12px;
       padding: 8px 12px; max-width: 230px; font-size: 13px; color: #333; line-height: 1.5;
       box-shadow: 0 3px 10px rgba(90,110,220,.18); opacity: 0; transform: translateY(6px);
@@ -62,7 +71,7 @@
   widget.id = 'valesa-widget';
   widget.innerHTML = `
     <div id="valesa-bubble"><span id="valesa-text"></span><div id="valesa-bar"><div id="valesa-bar-fill"></div></div></div>
-    <img id="valesa-avatar" src="${AVATAR_URL}" title="点我隐藏/显示气泡" draggable="false">
+    <div id="valesa-avatar" title="点我开关气泡 / 按住拖动" draggable="false"></div>
   `;
   document.body.appendChild(widget);
 
@@ -70,6 +79,22 @@
   const textEl = document.getElementById('valesa-text');
   const fill   = document.getElementById('valesa-bar-fill');
   const avatar = document.getElementById('valesa-avatar');
+
+  // 应用头像：优先自定义图片，否则显示 emoji
+  function applyAvatar() {
+    if (avatarUrl) {
+      avatar.classList.remove('emoji');
+      avatar.style.backgroundImage = `url("${avatarUrl.replace(/"/g, '\\"')}")`;
+      avatar.style.backgroundSize = 'cover';
+      avatar.style.backgroundPosition = 'center';
+      avatar.textContent = '';
+    } else {
+      avatar.classList.add('emoji');
+      avatar.style.backgroundImage = 'none';
+      avatar.textContent = DEFAULT_EMOJI;
+    }
+  }
+  applyAvatar();
 
   let hideTimer = null;
   function speak(msg) {

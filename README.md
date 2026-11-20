@@ -9,6 +9,7 @@
 - 💬 **对话计数**：每次在 DeepSeek 发送消息后自动 +1，弹出气泡播报
 - 📊 **进度条**：直观显示剩余额度比例
 - 🐱 **Valesa 萌宠**：可爱头像 + 分级语气提醒（额度充足 / 偏少 / 快用完 / 用完）
+- 🎨 **自定义头像**：默认 emoji，可随时换成任意图片 URL / base64
 - 🖱️ **可拖动**：按住头像拖到屏幕任意位置，松手固定（支持触屏）
 - ⚙️ **自由配置**：总次数、已用次数均可手动设置和校正
 - 💾 **本地存储**：计数保存在浏览器本地，不上传任何数据
@@ -45,6 +46,8 @@
 | 设置总次数 | 点油猴图标 → 「设置总次数」（默认 50） |
 | 额度重置 | 点油猴图标 → 「重置计数」 |
 | 校正计数 | 点油猴图标 → 「手动校正已用次数」 |
+| 自定义头像 | 点油猴图标 → 「设置头像（图片URL或base64）」 |
+| 恢复默认头像 | 点油猴图标 → 「恢复默认头像」 |
 | 开关气泡 | 单击 Valesa 头像 |
 | 移动位置 | 按住头像拖动 |
 
@@ -72,21 +75,16 @@ DeepSeek 网页版没有公开额度 API，脚本通过监听回车/发送按钮
 ## 🛠️ 开发
 
 ```
-src/valesa_quota_helper.user.js   源码模板（头像为占位符）
-valesa_quota_helper.user.js       成品脚本（已内嵌头像 base64）
+src/valesa_quota_helper.user.js   源码（与成品一致，头像用 emoji 占位）
+valesa_quota_helper.user.js       成品脚本
 ```
 
-重新生成成品：
+两个文件内容一致，修改源码后复制为成品即可：
 
 ```bash
-python -c "
-import base64
-b64 = base64.b64encode(open('avatar.jpg','rb').read()).decode()
-src = open('src/valesa_quota_helper.user.js', encoding='utf-8').read()
-open('valesa_quota_helper.user.js','w',encoding='utf-8').write(src.replace('__AVATAR_B64__', b64))
-"
+cp src/valesa_quota_helper.user.js valesa_quota_helper.user.js
 ```
 
 ## 📄 协议
 
-[MIT](LICENSE) · 头像图片仅供个人学习交流使用
+[MIT](LICENSE) · 本项目不内置任何第三方图片，默认使用 emoji 头像，用户可自行设置头像图片
